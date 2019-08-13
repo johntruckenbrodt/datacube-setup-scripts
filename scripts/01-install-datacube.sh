@@ -24,8 +24,12 @@ declare -r SCRIPTDIR
 source "$SCRIPTDIR/util.sh"
 
 echo "[DATACUBE-SETUP] Installing some basic packages..."
-sudo apt update
-sudo apt install binutils
+if [ -n "$(command -v apt-get)" ]; then
+  sudo apt update
+  sudo apt install binutils
+elif [ -n "$(command -v yum)" ]; then
+  sudo yum install binutils
+fi
 
 echo "[DATACUBE-SETUP] Setting up conda and creating environment..."
 
@@ -49,7 +53,11 @@ read -r install_postgres
 case "$install_postgres" in
 y | Y)
   echo "[DATACUBE-SETUP] Installing postgresql..."
-  sudo apt install --assume-yes postgresql postgresql-client postgresql-contrib
+  if [ -n "$(command -v apt-get)" ]; then
+    sudo apt install --assume-yes postgresql postgresql-client postgresql-contrib
+  elif [ -n "$(command -v yum)" ]; then
+    sudo yum -y install postgresql-server postgresql-contrib
+  fi
 
   # getting postgresql version
   pg_ver="$(dpkg -l postgresql | tail -n1 | awk '{ print $3 }' | cut -d+ -f1)"
