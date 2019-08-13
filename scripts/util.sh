@@ -20,28 +20,28 @@
 
 # prevent this file from being executed
 if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
-    echo "Error: This file is intended to be sourced. Executing it is pointless." >> /dev/stderr
-    exit 1
+  echo "Error: This file is intended to be sourced. Executing it is pointless." >>/dev/stderr
+  exit 1
 fi
 
 ################################################################################
 # Constants
 ################################################################################
 if [[ -z "$SCRIPTDIR" ]]; then
-    echo "Error: Cannot find out, in which directory I am. Aborting." >> /dev/stderr
-    exit 1
+  echo "Error: Cannot find out, in which directory I am. Aborting." >>/dev/stderr
+  exit 1
 fi
 
 source "$SCRIPTDIR/config"
 if [[ -z "$CONDA_SH" ]]; then
-    echo "Error: CONDA_SH is not configured. Please configure it in $SCRIPTDIR/config!" >> /dev/stderr
-    exit 1
+  echo "Error: CONDA_SH is not configured. Please configure it in $SCRIPTDIR/config!" >>/dev/stderr
+  exit 1
 elif [[ -z "$DCUBE_HOME" ]]; then
-    echo "Error: DCUBE_HOME is not configured. Please configure it in $SCRIPTDIR/config!" >> /dev/stderr
-    exit 1
+  echo "Error: DCUBE_HOME is not configured. Please configure it in $SCRIPTDIR/config!" >>/dev/stderr
+  exit 1
 elif [[ -z "$CUBEENV" ]]; then
-    echo "Warning: No name for the Datacube conda environment configured. Using 'cubeenv'."
-    CUBEENV="cubeenv"
+  echo "Warning: No name for the Datacube conda environment configured. Using 'cubeenv'."
+  CUBEENV="cubeenv"
 fi
 
 # make variables read-only
@@ -54,10 +54,10 @@ declare -r PATCHDIR="$(readlink -f "${SCRIPTDIR}/../patches")"
 declare -r CONFDIR="$(readlink -f "${SCRIPTDIR}/../conf")"
 
 # determine init system (non-systemd case is for Ubuntu 16.04)
-if pidof systemd > /dev/null; then
-    declare -r INITSYS="systemd"
+if pidof systemd >/dev/null; then
+  declare -r INITSYS="systemd"
 else
-    declare -r INITSYS="other"
+  declare -r INITSYS="other"
 fi
 
 ################################################################################
@@ -72,49 +72,49 @@ source "$CONDA_SH" || exit 1
 
 ##
 # Returns 0 if a conda environment is active, else returns 1.
-function _isInVenv {
-    if [[ -n "$CONDA_DEFAULT_ENV" ]]; then
-        return 0
-    else
-        return 1
-    fi
+function _isInVenv() {
+  if [[ -n "$CONDA_DEFAULT_ENV" ]]; then
+    return 0
+  else
+    return 1
+  fi
 }
 
 ##
 # Activates the datacube environment if it is not active yet.
-function _activate {
-    _isInVenv || {
-        echo "Activating environment $CUBEENV";
-        conda activate "$CUBEENV";
-    }
+function _activate() {
+  _isInVenv || {
+    echo "Activating environment $CUBEENV"
+    conda activate "$CUBEENV"
+  }
 }
 
 ##
 # Deactivates the datacube environment if it is still activated.
-function _deactivate {
-    _isInVenv && {
-        echo "Deactivating environment $CUBEENV";
-        conda deactivate;
-    }
+function _deactivate() {
+  _isInVenv && {
+    echo "Deactivating environment $CUBEENV"
+    conda deactivate
+  }
 }
 
 ##
 # Wrapper for sed to use extended regular expressions. Call with '-s' to run
 # sed as super user.
-function _exsed {
-    if [[ "$1" == "-s" ]]; then
-        shift
-        sudo sed --regexp-extended "$@"
-    else
-        sed --regexp-extended "$@"
-    fi
+function _exsed() {
+  if [[ "$1" == "-s" ]]; then
+    shift
+    sudo sed --regexp-extended "$@"
+  else
+    sed --regexp-extended "$@"
+  fi
 }
 
 ##
 # Escape a string for sed substitions. This function is expecting input from
 # stdin.
-function _sedescape {
-    _exsed "s/(\/|\\\\|&)/\\\\\1/g"
+function _sedescape() {
+  _exsed "s/(\/|\\\\|&)/\\\\\1/g"
 }
 
 ##
@@ -122,18 +122,18 @@ function _sedescape {
 # backup ending in ".datacube.bak".
 # usage:
 # _backup FILE
-function _backup {
-    if [[ "$1" == "-s" ]]; then
-        local use_sudo=1
-        shift
-    fi
+function _backup() {
+  if [[ "$1" == "-s" ]]; then
+    local use_sudo=1
+    shift
+  fi
 
-    if [[ ! -e "${1}.datacube.bak" ]]; then
-        echo "[NOTICE] Creating a backup of '$1' named '${1}.datacube.bak'..."
-        if [[ $use_sudo -eq 1 ]]; then
-            sudo cp -v "$1" "${1}.datacube.bak"
-        else
-            cp -v "$1" "${1}.datacube.bak"
-        fi
+  if [[ ! -e "${1}.datacube.bak" ]]; then
+    echo "[NOTICE] Creating a backup of '$1' named '${1}.datacube.bak'..."
+    if [[ $use_sudo -eq 1 ]]; then
+      sudo cp -v "$1" "${1}.datacube.bak"
+    else
+      cp -v "$1" "${1}.datacube.bak"
     fi
+  fi
 }

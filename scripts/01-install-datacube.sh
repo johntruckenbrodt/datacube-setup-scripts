@@ -17,7 +17,10 @@
 
 set -e
 
-declare -r SCRIPTDIR="$(readlink -f "$(dirname "$0")")"
+SCRIPTDIR="$(readlink -f "$(dirname "$0")")"
+declare -r SCRIPTDIR
+
+# shellcheck source=/dev/null
 source "$SCRIPTDIR/util.sh"
 
 echo "[DATACUBE-SETUP] Installing some basic packages..."
@@ -30,59 +33,62 @@ conda config --append channels conda-forge
 conda create --yes --name "$CUBEENV" python=3.6 datacube cython jupyter matplotlib scipy
 
 echo "[DATACUBE-SETUP] Preparing PostgreSQL for the Datacube..."
+
 echo -n "Enter the name for the database user (must be a valid user in your Linux system, using '$USER' if you enter nothing): "
-read DB_USER
+read -r DB_USER
 DB_USER="${DB_USER:-$USER}"
+
 echo -n "Enter a password for the database user (leave empty to generate one): "
-read DB_PASSWD
-DB_PASSWD="${DB_PASSWD:-$(strings /dev/urandom | egrep -o "[[:alnum:]]*" | tr -d '\n' | fold -b20 | head -n1)}"
+read -r DB_PASSWD
+DB_PASSWD="${DB_PASSWD:-$(strings /dev/urandom | grep -E -o "[[:alnum:]]*" | tr -d '\n' | fold -b20 | head -n1)}"
 
 echo "[DATACUBE-SETUP] Checking for PostgreSQL installation..."
 echo -n "Should PostgreSQL be installed and configured automatically? [y/N] "
-read install_postgres
+read -r install_postgres
+
 case "$install_postgres" in
-    y|Y)
-        echo "[DATACUBE-SETUP] Installing postgresql..."
-        sudo apt install --assume-yes postgresql postgresql-client postgresql-contrib
+y | Y)
+  echo "[DATACUBE-SETUP] Installing postgresql..."
+  sudo apt install --assume-yes postgresql postgresql-client postgresql-contrib
 
-        # getting postgresql version
-        pg_ver="$(dpkg -l postgresql | tail -n1 | awk '{ print $3 }' | cut -d+ -f1)"
+  # getting postgresql version
+  pg_ver="$(dpkg -l postgresql | tail -n1 | awk '{ print $3 }' | cut -d+ -f1)"
 
-        echo "[DATACUBE-SETUP] Configuring postgresql..."
+  echo "[DATACUBE-SETUP] Configuring postgresql..."
 
-        _backup -s "/etc/postgresql/$pg_ver/main/pg_hba.conf"
-        # configuring tcp socket access for $DB_USER
-        if ! sudo egrep "^host\s+all\s+${DB_USER}\s+samenet\s+trust$" "/etc/postgresql/$pg_ver/main/pg_hba.conf" > /dev/null; then
-            echo "host    all             ${DB_USER}       samenet                 trust" \
-                | sudo tee --append "/etc/postgresql/$pg_ver/main/pg_hba.conf"
-        fi
+  _backup -s "/etc/postgresql/$pg_ver/main/pg_hba.conf"
+  # configuring tcp socket access for $DB_USER
+  if ! sudo egrep "^host\s+all\s+${DB_USER}\s+samenet\s+trust$" "/etc/postgresql/$pg_ver/main/pg_hba.conf" >/dev/null; then
+    echo "host    all             ${DB_USER}       samenet                 trust" |
+      sudo tee --append "/etc/postgresql/$pg_ver/main/pg_hba.conf"
+  fi
 
-        _backup -s "/etc/postgresql/$pg_ver/main/postgresql.conf"
-        _exsed -s --in-place \
-            -e 's/^#?(max_connections =) ?[0-9]+(.*)/\1 1000\2/' \
-            -e "s%^#?(unix_socket_directories =) ?('[A-Za-z/-]+)'(.*)%\1 \2,/tmp'\3%" \
-            -e 's/^#?(shared_buffers =) ?[0-9]+[kMG]B(.*)/\1 4096MB\2/' \
-            -e 's/^#?(work_mem =) ?[0-9]+[kMG]B(.*)/\1 64MB\2/' \
-            -e 's/^#?(maintenance_work_mem =) ?[0-9]+[kMG]B(.*)/\1 256MB\2/' \
-            -e "s/^#?(timezone =) ?'[A-Za-z-]+'(.*)/\1 'UTC'\2/" \
-            "/etc/postgresql/$pg_ver/main/postgresql.conf"
+  _backup -s "/etc/postgresql/$pg_ver/main/postgresql.conf"
+  _exsed -s --in-place \
+    -e 's/^#?(max_connections =) ?[0-9]+(.*)/\1 1000\2/' \
+    -e "s%^#?(unix_socket_directories =) ?('[A-Za-z/-]+)'(.*)%\1 \2,/tmp'\3%" \
+    -e 's/^#?(shared_buffers =) ?[0-9]+[kMG]B(.*)/\1 4096MB\2/' \
+    -e 's/^#?(work_mem =) ?[0-9]+[kMG]B(.*)/\1 64MB\2/' \
+    -e 's/^#?(maintenance_work_mem =) ?[0-9]+[kMG]B(.*)/\1 256MB\2/' \
+    -e "s/^#?(timezone =) ?'[A-Za-z-]+'(.*)/\1 'UTC'\2/" \
+    "/etc/postgresql/$pg_ver/main/postgresql.conf"
 
-        unset pg_ver
+  unset pg_ver
 
-        if [[ "$INITSYS" == "systemd" ]]; then
-            sudo systemctl restart postgresql.service
-        else
-            sudo service postgresql restart
-        fi
-        ;;
-    *)
-        echo "[DATACUBE-SETUP] Skipping installation and configuration of PostgreSQL..."
-        echo "[DATACUBE-SETUP] Please take a look into '${CONFDIR}/postgresql.conf' and the README to see, what needs to be configured."
-        echo "[DATACUBE-SETUP] Apply the configuration, reload/restart PostgreSQL and return to this installer."
-        echo -n "Continue setup? [ENTER]"
-        read shall_continue
-        unset shall_continue
-        ;;
+  if [[ "$INITSYS" == "systemd" ]]; then
+    sudo systemctl restart postgresql.service
+  else
+    sudo service postgresql restart
+  fi
+  ;;
+*)
+  echo "[DATACUBE-SETUP] Skipping installation and configuration of PostgreSQL..."
+  echo "[DATACUBE-SETUP] Please take a look into '${CONFDIR}/postgresql.conf' and the README to see, what needs to be configured."
+  echo "[DATACUBE-SETUP] Apply the configuration, reload/restart PostgreSQL and return to this installer."
+  echo -n "Continue setup? [ENTER]"
+  read -r shall_continue
+  unset shall_continue
+  ;;
 esac
 unset install_postgres
 
@@ -94,7 +100,7 @@ sudo --user=postgres psql --command="ALTER USER $DB_USER WITH PASSWORD '$DB_PASS
 createdb datacube
 
 echo "[DATABASE-SETUP] Configuring database access for datacube..."
-cat > "$HOME/.datacube.conf" <<CONFIG
+cat >"$HOME/.datacube.conf" <<CONFIG
 [datacube]
 db_database: datacube
 db_hostname: localhost

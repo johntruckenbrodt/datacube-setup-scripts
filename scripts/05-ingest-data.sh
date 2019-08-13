@@ -15,7 +15,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-declare -r SCRIPTDIR="$(readlink -f "$(dirname "$0")")"
+SCRIPTDIR="$(readlink -f "$(dirname "$0")")"
+declare -r SCRIPTDIR
+
+# shellcheck source=/dev/null
 source "$SCRIPTDIR/util.sh"
 
 _activate
@@ -33,8 +36,8 @@ datacube dataset add "$DCUBE_HOME"/data/original_data/LC08*/*.yaml --auto-match
 
 echo "[DATACUBE-INGEST] Ingesting data..."
 datacube -v ingest \
-    -c "$DCUBE_HOME/agdc-v2/ingest/ingestion_configs/ls8_collections_sr_fuente_de_piedra_example.yaml"  \
-    --executor multiproc 2
+  -c "$DCUBE_HOME/agdc-v2/ingest/ingestion_configs/ls8_collections_sr_fuente_de_piedra_example.yaml" \
+  --executor multiproc 2
 
 _deactivate
 

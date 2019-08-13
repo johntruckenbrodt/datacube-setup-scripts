@@ -17,19 +17,22 @@
 
 set -e
 
-declare -r SCRIPTDIR="$(readlink -f "$(dirname "$0")")"
+SCRIPTDIR="$(readlink -f "$(dirname "$0")")"
+declare -r SCRIPTDIR
+
+# shellcheck source=/dev/null
 source "$SCRIPTDIR/util.sh"
 
 echo "[DATACUBE-SETUP] Installing additional packages for data import into conda environment..."
 
 declare -ra PYTHON_PACKAGES=(
-"numpy"
-"pathlib"
-"pyyaml"
-"python-dateutil"
-"rasterio"
-"shapely"
-"cachetools"
+  "numpy"
+  "pathlib"
+  "pyyaml"
+  "python-dateutil"
+  "rasterio"
+  "shapely"
+  "cachetools"
 )
 
 conda install --name "$CUBEENV" --yes "${PYTHON_PACKAGES[@]}"

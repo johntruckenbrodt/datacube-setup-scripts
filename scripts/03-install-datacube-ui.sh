@@ -17,7 +17,10 @@
 
 set -e
 
-declare -r SCRIPTDIR="$(readlink -f "$(dirname "$0")")"
+SCRIPTDIR="$(readlink -f "$(dirname "$0")")"
+declare -r SCRIPTDIR
+
+# shellcheck source=/dev/null
 source "$SCRIPTDIR/util.sh"
 
 echo "[DCUI-Setup] Setting up Datacube UI..."
@@ -34,7 +37,6 @@ mkdir -vp "$UIDIR/water_detection"
 mkdir -vp "$UIDIR/slip"
 
 chmod --recursive 775 "$UIDIR"
-
 
 echo "[DCUI-Setup] Cloning repository of Datacube UI..."
 git clone --recurse-submodules https://github.com/ceos-seo/data_cube_ui -b master "$DCUBE_HOME/data_cube_ui"
@@ -54,47 +56,46 @@ popd
 echo "[DCUI-Setup] Asking if patch for Django 2.0 is desired..."
 patch="${PATCHDIR}/0002-django-2-migration.patch"
 echo -n "Should the patch '$patch' be applied? [Y/n] "
-read shall_patch_django
+read -r shall_patch_django
 case "$shall_patch_django" in
-    y|Y|'')
-        pushd "$DCUBE_HOME/data_cube_ui"
+y | Y | '')
+  pushd "$DCUBE_HOME/data_cube_ui"
 
-        echo "[DCUI-Setup] Checking if patch '$patch' can be applied..."
-        git apply --stat "$patch"
-        git apply --check "$patch"
-        echo "[DCUI-Setup] Applying patch '$patch'..."
-        git apply "$patch"
-        echo "[DCUI-Setup] Patch '$patch' successfully applied."
+  echo "[DCUI-Setup] Checking if patch '$patch' can be applied..."
+  git apply --stat "$patch"
+  git apply --check "$patch"
+  echo "[DCUI-Setup] Applying patch '$patch'..."
+  git apply "$patch"
+  echo "[DCUI-Setup] Patch '$patch' successfully applied."
 
-        popd
-        ;;
-    *)
-        echo "[DCUI-Setup] Skipping application of patch for Django 2.0..."
-        ;;
+  popd
+  ;;
+*)
+  echo "[DCUI-Setup] Skipping application of patch for Django 2.0..."
+  ;;
 esac
 unset shall_patch_django
 
-
 echo "[DCUI-Setup] Installing required packages from distro repository..."
 declare -ar PACKAGES=(
-apache2
-redis-server
-libfreeimage3
-imagemagick
-gdal-bin
+  apache2
+  redis-server
+  libfreeimage3
+  imagemagick
+  gdal-bin
 )
 
 sudo apt install --assume-yes "${PACKAGES[@]}"
 
 echo "[DCUI-Setup] Installing required python packages into conda environment..."
 declare -ar PYTHON_PACKAGES=(
-"django=2.0.8"
-redis
-imageio
-django-bootstrap3
-matplotlib
-celery
-pip
+  "django=2.0.8"
+  redis
+  imageio
+  django-bootstrap3
+  matplotlib
+  celery
+  pip
 )
 
 conda install --name "$CUBEENV" --yes "${PYTHON_PACKAGES[@]}"
@@ -105,18 +106,16 @@ _activate
 # back to the pip *inside* our conda environment
 pip install stringcase
 
-
 # install mod_wsgi into conda environment
 echo "[DCUI-Setup] Installing mod_wsgi in conda environment..."
 sudo apt install --assume-yes apache2-dev build-essential
 pip install mod_wsgi
-sudo "$(which mod_wsgi-express)" install-module | sed -n '/LoadModule/p' | sudo tee /etc/apache2/mods-available/wsgi.load
+sudo "$(command -v mod_wsgi-express)" install-module | sed -n '/LoadModule/p' | sudo tee /etc/apache2/mods-available/wsgi.load
 _exsed --in-place 's,(WSGIPythonHome ).*,\1'"$CONDA_PREFIX"',' "${CONFDIR}/wsgi.conf"
 _exsed --in-place 's,(WSGIPythonPath ).*,\1'"${CONDA_PREFIX}/lib/python3.6/site-packages"',' "${CONFDIR}/wsgi.conf"
 sudo install -vDm644 "${CONFDIR}/wsgi.conf" /etc/apache2/mods-available/wsgi.conf
 
 _deactivate
-
 
 echo "[DCUI-SETUP] Configuring Django..."
 declare DJANGO_SETTINGS="${DCUBE_HOME}/data_cube_ui/data_cube_ui/settings.py"
@@ -124,7 +123,8 @@ declare DJANGO_SETTINGS="${DCUBE_HOME}/data_cube_ui/data_cube_ui/settings.py"
 # configure ADMIN_EMAIL
 echo "[DCUI-SETUP-DJANGO] Configuring admin email..."
 echo -n "Please enter the admin email address to use (will be used for Apache, too): "
-read admin_email
+read -r admin_email
+
 _exsed --in-place "s/^(ADMIN_EMAIL = ).*/\1'\
 $(echo -n "$admin_email" | _sedescape)\
 '/" "$DJANGO_SETTINGS"
@@ -157,62 +157,60 @@ perl -i -pe "BEGIN{undef \$/;} s/(\s+)('PASSWORD': ?'.*',?)(\n)(?!\s+'HOST': ?'.
 
 # configure TIME_ZONE (using timedatectl or /etc/timezone)
 echo "[DCUI-SETUP-DJANGO] Configuring timezone..."
-if which timedatectl > /dev/null && timedatectl status 2>&1 > /dev/null; then
-    _exsed --in-place "s/^(TIME_ZONE = ).*/\1'\
+if command -v timedatectl >/dev/null && timedatectl status > /dev/null 2>&1; then
+  _exsed --in-place "s/^(TIME_ZONE = ).*/\1'\
 $(timedatectl status | awk '$1 ~ /Time/ && $2 ~ /zone:/ { print $3 }' | _sedescape)\
 '/" "$DJANGO_SETTINGS"
 elif [[ -e "/etc/timezone" ]]; then
-    _exsed --in-place "s/^(TIME_ZONE = ).*/\1'\
+  _exsed --in-place "s/^(TIME_ZONE = ).*/\1'\
 $(cat /etc/timezone | _sedescape)\
 '/" "$DJANGO_SETTINGS"
 fi
 
-
 # copy database login from datacube.conf into .pgpass file
 echo "*:*:*:$(_exsed --quiet "s/^db_username: (.*)$/\1/p" "$HOME/.datacube.conf"):$(_exsed --quiet "s/^db_password: (.*)$/\1/p" "$HOME/.datacube.conf" | _exsed -e 's/:/\\:/g' -e 's/\\/\\\\/g')" \
-    >> "$HOME/.pgpass"
+  >>"$HOME/.pgpass"
 chmod 0600 "$HOME/.pgpass"
-
 
 echo "[DCUI-SETUP] Checking for Postfix installation..."
 echo -n "Should Postfix be installed and configured automatically? [y/N] "
-read install_postfix
+read -r install_postfix
 case "$install_postfix" in
-    y|Y)
-        echo "[DCUI-SETUP] Installing Postfix..."
-        # TODO: automate interactive setup of postfix
-        sudo apt install --assume-yes postfix mailutils
-        # TODO: is stopping the service required or would a restart suffice?
-        if [[ "$INITSYS" == "systemd" ]]; then
-            sudo systemctl stop postfix.service
-        else
-            sudo service postfix stop
-        fi
+y | Y)
+  echo "[DCUI-SETUP] Installing Postfix..."
+  # TODO: automate interactive setup of postfix
+  sudo apt install --assume-yes postfix mailutils
+  # TODO: is stopping the service required or would a restart suffice?
+  if [[ "$INITSYS" == "systemd" ]]; then
+    sudo systemctl stop postfix.service
+  else
+    sudo service postfix stop
+  fi
 
-        echo "[DCUI-SETUP] Configuring Postfix..."
-        _backup -s /etc/postfix/main.cf
-        _exsed -s --in-place 's/(inet_interfaces = ).*/\1localhost/' /etc/postfix/main.cf
-        if [[ "$INITSYS" == "systemd" ]]; then
-            sudo systemctl start postfix.service
-        else
-            sudo service postfix start
-        fi
-        ;;
-    *)
-        echo "[DCUI-SETUP] Skipping installation and configuration of Postfix..."
-        echo "[DCUI-SETUP] Please take a look into the README and see, what needs to be configured."
-        echo "[DCUI-SETUP] Apply the configuration, reload/restart Postfix and return to this installer."
-        echo -n "Continue setup? [ENTER]"
-        read shall_continue
-        unset shall_continue
-        ;;
+  echo "[DCUI-SETUP] Configuring Postfix..."
+  _backup -s /etc/postfix/main.cf
+  _exsed -s --in-place 's/(inet_interfaces = ).*/\1localhost/' /etc/postfix/main.cf
+  if [[ "$INITSYS" == "systemd" ]]; then
+    sudo systemctl start postfix.service
+  else
+    sudo service postfix start
+  fi
+  ;;
+*)
+  echo "[DCUI-SETUP] Skipping installation and configuration of Postfix..."
+  echo "[DCUI-SETUP] Please take a look into the README and see, what needs to be configured."
+  echo "[DCUI-SETUP] Apply the configuration, reload/restart Postfix and return to this installer."
+  echo -n "Continue setup? [ENTER]"
+  read -r shall_continue
+  unset shall_continue
+  ;;
 esac
 unset install_postfix
 
-
 echo "[DCUI-SETUP] Configuring Apache Web Server..."
 echo -n "Please enter the value for ServerName (i.e. the domain name): "
-read server_name
+read -r server_name
+
 echo "[DCUI-SETUP] Creating VirtualHost at /etc/apache2/sites-available/dc_ui.conf..."
 cat <<APACHECONF | sudo tee /etc/apache2/sites-available/dc_ui.conf
 <VirtualHost *:80>
@@ -264,9 +262,9 @@ sudo a2dissite 000-default.conf
 sudo a2ensite dc_ui.conf
 
 if [[ "$INITSYS" == "systemd" ]]; then
-    sudo systemctl restart apache2.service
+  sudo systemctl restart apache2.service
 else
-    sudo service apache2 restart
+  sudo service apache2 restart
 fi
 
 echo "[DCUI-Setup] Finished scripted setup."
