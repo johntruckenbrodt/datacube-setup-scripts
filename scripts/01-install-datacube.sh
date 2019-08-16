@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# Copyright (C) 2018 Felix Glaser
+# Copyright (C) 2018-2019 Felix Glaser, John Truckenbrodt
 #
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -15,6 +15,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
+# exit immediately if a command exits with a non-zero status
 set -e
 
 SCRIPTDIR="$(readlink -f "$(dirname "$0")")"
@@ -28,13 +29,20 @@ if [ -n "$(command -v apt-get)" ]; then
   sudo apt update
   sudo apt install binutils
 elif [ -n "$(command -v yum)" ]; then
+  sudo yum check-update
   sudo yum install binutils
 fi
 
 echo "[DATACUBE-SETUP] Setting up conda and creating environment..."
 
+conda update --yes -n base -c defaults conda
 conda config --append channels conda-forge
-conda create --yes --name "$CUBEENV" python=3.6 datacube cython jupyter matplotlib scipy
+
+if ! conda info --envs | grep -q "^$CUBEENV"; then
+  echo "[DATACUBE-SETUP] creating virtual environment $CUBEENV"
+  conda create --yes --name "$CUBEENV" python=3.6
+fi
+conda install -n "$CUBEENV" datacube cython jupyter matplotlib scipy
 
 echo "[DATACUBE-SETUP] Preparing PostgreSQL for the Datacube..."
 
@@ -56,22 +64,39 @@ y | Y)
   if [ -n "$(command -v apt-get)" ]; then
     sudo apt install --assume-yes postgresql postgresql-client postgresql-contrib
   elif [ -n "$(command -v yum)" ]; then
-    sudo yum -y install postgresql-server postgresql-contrib
+    sudo yum -y install postgresql postgresql-server postgresql-contrib
   fi
-
-  # getting postgresql version
-  pg_ver="$(dpkg -l postgresql | tail -n1 | awk '{ print $3 }' | cut -d+ -f1)"
 
   echo "[DATACUBE-SETUP] Configuring postgresql..."
-
-  _backup -s "/etc/postgresql/$pg_ver/main/pg_hba.conf"
+  # collect info about the currently running postgresql service and its configuration files
+  pg_service=$(systemctl list-unit-files | grep enabled | grep '^postgresql' | awk '{ print $1 }')
+  pg_hba=$(sudo -u postgres psql -P format=unaligned -c "show hba_file;" | head -2 | tail -1)
+  pg_conf="${pg_hba/pg_hba/postgresql}"
+  echo "running $pg_service with configuration in"
+  echo " - $pg_hba"
+  echo " - $pg_conf"
+  ##########################################################################
+  # modify pg_hba.conf
+  _backup -s "$pg_hba"
   # configuring tcp socket access for $DB_USER
-  if ! sudo egrep "^host\s+all\s+${DB_USER}\s+samenet\s+trust$" "/etc/postgresql/$pg_ver/main/pg_hba.conf" >/dev/null; then
-    echo "host    all             ${DB_USER}       samenet                 trust" |
-      sudo tee --append "/etc/postgresql/$pg_ver/main/pg_hba.conf"
+  if ! sudo egrep "^host\s+all\s+${DB_USER}\s+samenet\s+trust$" "$pg_hba" >/dev/null; then
+    echo "host    all             ${DB_USER}             samenet                 trust" |
+      sudo tee --append "$pg_hba"
   fi
-
-  _backup -s "/etc/postgresql/$pg_ver/main/postgresql.conf"
+  # this alone was found to not work properly in some situations;
+  # instead, adjusting the following did the trick:
+  # from
+  # host    all             all             127.0.0.1/32            ident
+  # host    all             all             ::1/128                 ident
+  # to
+  # host    all             all             127.0.0.1/32            md5
+  # host    all             all             ::1/128                 md5
+  # this can be achieved with the following line:
+  # sed -i -E 's/(host +all +all[ a-z0-9\.\:/]*)ident/\1md5/g' "$pg_hba"
+  unset pg_hba arr
+  ##########################################################################
+  # modify postgresql.conf
+  _backup -s "$pg_conf"
   _exsed -s --in-place \
     -e 's/^#?(max_connections =) ?[0-9]+(.*)/\1 1000\2/' \
     -e "s%^#?(unix_socket_directories =) ?('[A-Za-z/-]+)'(.*)%\1 \2,/tmp'\3%" \
@@ -79,15 +104,17 @@ y | Y)
     -e 's/^#?(work_mem =) ?[0-9]+[kMG]B(.*)/\1 64MB\2/' \
     -e 's/^#?(maintenance_work_mem =) ?[0-9]+[kMG]B(.*)/\1 256MB\2/' \
     -e "s/^#?(timezone =) ?'[A-Za-z-]+'(.*)/\1 'UTC'\2/" \
-    "/etc/postgresql/$pg_ver/main/postgresql.conf"
+    "$pg_conf"
 
-  unset pg_ver
-
+  unset pg_conf arr
+  ##########################################################################
+  # restart postgresql service after the configuration changes
   if [[ "$INITSYS" == "systemd" ]]; then
-    sudo systemctl restart postgresql.service
+    sudo systemctl restart "$pg_service"
   else
-    sudo service postgresql restart
+    sudo service "${pg_service/\.service/}" restart
   fi
+  unset pg_service
   ;;
 *)
   echo "[DATACUBE-SETUP] Skipping installation and configuration of PostgreSQL..."
