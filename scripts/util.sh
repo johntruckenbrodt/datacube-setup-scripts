@@ -137,3 +137,17 @@ function _backup() {
     fi
   fi
 }
+
+# check if a postgresql user exists; returns 1 if true
+# usage:
+# _pguser_exist username
+function _pguser_exist() {
+  sudo -u postgres psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='$1'"
+}
+
+# check if a database exists for a user
+# usage:
+# _pgdb_exist username databasename; returns 1 if true
+function _pgdb_exist() {
+  psql -U "$1" -tAc "SELECT 1 FROM pg_database WHERE datname='$2'"
+}

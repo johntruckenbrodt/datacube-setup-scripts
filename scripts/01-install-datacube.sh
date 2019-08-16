@@ -128,12 +128,20 @@ esac
 unset install_postgres
 
 echo "[DATACUBE-SETUP] Setting up postgresql database and users..."
-sudo --user=postgres createuser --superuser "$DB_USER"
-# create database for the newly created user
-createdb
+if ! [ "$(_pguser_exist "$DB_USER")" = '1' ]; then
+  echo " - adding new user $DB_USER"
+  sudo --user=postgres createuser --superuser "$DB_USER"
+fi
+if ! [ "$(_pgdb_exist "$DB_USER" "$DB_USER")" = '1' ]; then
+  echo " - creating database $DB_USER for user $DB_USER"
+  createdb
+fi
 sudo --user=postgres psql --command="ALTER USER $DB_USER WITH PASSWORD '$DB_PASSWD';"
-createdb datacube
-
+if ! [ "$(_pgdb_exist "$DB_USER" datacube)" = '1' ]; then
+  echo " - creating database datacube for user $DB_USER"
+  createdb datacube
+fi
+unset user_exist db_exist
 echo "[DATABASE-SETUP] Configuring database access for datacube..."
 cat >"$HOME/.datacube.conf" <<CONFIG
 [datacube]
